@@ -59,8 +59,12 @@ class Repl private constructor(
     private val commands: MutableMap<String, Command> = mutableMapOf()
     private val aliases: MutableMap<String, String> = mutableMapOf()
 
-    /** Whether to dump stack trace when encountering an error. */
-    var dumpStacktrace: Boolean = false
+    // Whether to dump stack trace when encountering an error.
+    private var dumpStacktrace: Boolean = false
+    suspend fun enableDumpingStacktrace() =
+        withRunLock { dumpStacktrace = true }
+    suspend fun disableDumpingStacktrace() =
+        withRunLock { dumpStacktrace = false }
     // Classes in this set do not generate a stack trace.
     private val stacktraceExclusionFilter: MutableSet<KClass<out Throwable>> = mutableSetOf()
     // Classes in this set cause the repl to quit.

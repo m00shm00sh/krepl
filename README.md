@@ -64,14 +64,19 @@ any of its subclasses,  the run loop will halt and the exception will be rethrow
 `repl.quitOnException<E>()` can be used to register such an exception `E`.
 
 ### Verbose exceptions
-When `dumpStacktrace` is set to `true`, an exception thrown from a child or channel operation is sent to the output
-channel if the channel hasn't been cancelled from the exception. (If it has, only the log will have any information.)
+If `enableDumpingStacktrace()` is called prior to `run()`, an exception thrown from a child or channel operation is sent
+to the output  channel if the channel hasn't been cancelled from the exception.
+(If it has, only the log will have any information.)
+
+This state is denoted as *stack-dump-enabled*.
+
+Calling `disableDumpingStacktrace()` disables this behavior.
 
 ### Filtered exceptions
 An exception type can be marked as filtered, meaning that, if specified, a stack trace is not sent to the output channel
 if a child or channel throws it or any of its subclasses.
 
-It is an error to have filtered exceptions if `dumpStacktrace` is `false`.
+It is an error to have filtered exceptions if the state is not *stack-dump-enabled*.
 
 ## Builtins
 ### exit, quit, -q

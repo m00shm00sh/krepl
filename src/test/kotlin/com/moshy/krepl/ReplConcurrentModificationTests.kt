@@ -47,6 +47,12 @@ class ReplConcurrentModificationTests {
             assertBlockTimesOut(10L, "verbose exception filter") {
                 repl.filterFromStacktrace<IllegalArgumentException>()
             }
+            assertBlockTimesOut(10L, "enable-stacktrace") {
+                repl.enableDumpingStacktrace()
+            }
+            assertBlockTimesOut(10L, "disable-stacktrace") {
+                repl.disableDumpingStacktrace()
+            }
         }
         job.cancelAndJoin()
     }

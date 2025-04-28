@@ -20,7 +20,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlin.test.assertEquals
 import kotlin.test.fail
@@ -274,7 +273,7 @@ class ReplFailureTests {
     @Test
     fun `test stack dump`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"))
-        repl.dumpStacktrace = true
+        repl.enableDumpingStacktrace()
         class E1: RuntimeException()
         repl.registerCommand("a") {
             throw E1()
@@ -296,7 +295,7 @@ class ReplFailureTests {
     @Test
     fun `test stack dump filtering`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"))
-        repl.dumpStacktrace = true
+        repl.enableDumpingStacktrace()
         open class E1: RuntimeException()
         class E2: E1()
         repl.registerCommand("a") {
