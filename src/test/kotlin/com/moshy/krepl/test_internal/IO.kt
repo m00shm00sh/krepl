@@ -4,9 +4,8 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.io.Reader
 
-internal fun String.stream(): Reader = toByteArray().let(::ByteArrayInputStream).reader()
+internal fun String.stream(): InputStream = toByteArray().let(::ByteArrayInputStream)
 
 private class ThrowingInputStream: InputStream() {
     override fun read(): Int = throw IOE()

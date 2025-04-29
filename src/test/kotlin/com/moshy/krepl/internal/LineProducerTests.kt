@@ -24,7 +24,7 @@ class LineProducerTests {
         val (consumerSupplier, lines) = outputCollector()
         val channel = Channel<String>()
         val channelReadJob = launch { consumerSupplier(channel) }
-        val streamReadJob = launch { lineProducer(stream)(channel) }
+        val streamReadJob = launch { lineProducer(stream.reader())(channel) }
         streamReadJob.join()
         channelReadJob.join()
         assertEquals(lines("a", "b"), lines)

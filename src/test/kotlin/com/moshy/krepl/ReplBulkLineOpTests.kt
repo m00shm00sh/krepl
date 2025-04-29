@@ -156,7 +156,7 @@ class ReplBulkLineOpTests {
         fun testingFileReaderSupplier(name: String): Reader =
             when (name) {
                 "thrower" -> InputStreamReader(throwingInputStream())
-                "ab" -> "a\nb".stream()
+                "ab" -> "a\nb".stream().reader()
                 else -> throw NoSuchFileException(File(name))
             }
     }
