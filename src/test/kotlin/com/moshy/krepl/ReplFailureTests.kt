@@ -227,6 +227,28 @@ class ReplFailureTests {
     }
 
     @Test
+    fun `test fatal exception handler via build`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf("a"))
+        open class E1: RuntimeException()
+        class E2: E1() {
+            override fun toString() = "\$E2"
+        }
+        repl.build {
+            registerCommand("a") {
+                throw E2()
+            }
+            quitOnException<E1>()
+        }
+        ignoreException { repl.run() }
+        assertLinesMatch(
+            listOf(
+                " $ ",
+                "\\(a:E\\) \\\$E2\n"
+            ), lines
+        )
+    }
+
+    @Test
     fun `test fatal exception handler saving exception`() = withTimeoutOneSecond {
         val (repl, _) = IoRepl(listOf("a"))
         open class E1: RuntimeException()
@@ -280,6 +302,30 @@ class ReplFailureTests {
         }
         repl.run()
         assertLinesMatch(listOf(
+            " $ ",
+            "\\(a:E\\) .*\\\$E1\n",
+            /* we're in a suspend function so it's safe to assume there's an invokeSuspend somewhere
+             * in the stack trace
+             */
+            "\\(a:E\\) \tat .*\\.invokeSuspend\\(.*\n",
+            ">> >>",
+            " $ "
+        ), lines
+        )
+    }
+
+    @Test
+    fun `test stack dump enabled via build`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf("a"))
+        repl.build {
+            enableDumpingStacktrace()
+        }
+        class E1: RuntimeException()
+        repl.registerCommand("a") {
+            throw E1()
+        }
+        repl.run()
+        assertLinesMatch(listOf(
                 " $ ",
                 "\\(a:E\\) .*\\\$E1\n",
                 /* we're in a suspend function so it's safe to assume there's an invokeSuspend somewhere
@@ -302,6 +348,28 @@ class ReplFailureTests {
             throw E2()
         }
         repl.filterFromStacktrace<E1>()
+        repl.run()
+        assertLinesMatch(
+            listOf(
+                " $ ",
+                "\\(a:E\\) .*\\\$E2\n",
+                " $ "
+            ), lines
+        )
+    }
+
+    @Test
+    fun `test stack dump filtering via build`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf("a"))
+        repl.build {
+            enableDumpingStacktrace()
+            open class E1 : RuntimeException()
+            class E2 : E1()
+            registerCommand("a") {
+                throw E2()
+            }
+            filterFromStacktrace<E1>()
+        }
         repl.run()
         assertLinesMatch(
             listOf(

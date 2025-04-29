@@ -28,6 +28,9 @@ class ReplConcurrentModificationTests {
             assertBlockTimesOut(10L) {
                 repl.run()
             }
+            assertBlockTimesOut(10L) {
+                repl.build { }
+            }
         }
         job.cancelAndJoin()
     }

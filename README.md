@@ -30,7 +30,6 @@ A command callback takes a `State` argument, which has members
 - `inputChannel`, containing a non-cancellable receive channel for auxiliary lines,
 - `outputChannel`, containing a non-closeable send channel for sending output lines
 
-
 ### Semantics
 By default, a command has `semantics = Repl.LineSemantics.NONE`.
 It can be registered with `semantics = Repl.LineSemantics.CONSUME` to consume a line-buffer populated by one or more
@@ -55,6 +54,13 @@ After tokenizing quoted tokens with backslash escape, the sequence of tokens is 
 for tokens containing `'='`. If it exists not at the start of the token, the token is
 extracted into a keyword. Otherwise, it is treated as a positional. The first token is always
 the command.
+
+## Locking
+### Run-lock
+Command-related, exit-related, and exception-related data is protected by a run lock that will suspend the calling
+coroutine if the lock is already held.
+To simplify locking, `build()` can be used to build commands etc before running.
+
 
 ## Exceptions
 ### Fatal exceptions

@@ -1,22 +1,12 @@
 package com.moshy.krepl
 
 import com.moshy.krepl.test_internal.assertThrowsWithMessage
-import com.moshy.krepl.test_internal.inputWriter
 import com.moshy.krepl.test_internal.maximizeLoggingLevelForTesting
-import com.moshy.krepl.test_internal.noop
-import com.moshy.krepl.test_internal.outputCollector
-import com.moshy.krepl.test_internal.stream
-import com.moshy.krepl.test_internal.throwingInputStream
 import com.moshy.krepl.test_internal.withTimeoutOneSecond
-import kotlinx.coroutines.CoroutineScope
 import org.junit.jupiter.api.Assertions.assertLinesMatch
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import java.io.File
-import java.io.InputStreamReader
-import java.io.Reader
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.max
 import kotlin.test.assertEquals
 
 /* Tests registration of commands.
@@ -28,6 +18,18 @@ class ReplRegistrationTests {
         val (repl, lines) = IoRepl(emptyList(), null)
         repl.atExit { o ->
             o.send("1".asLine())
+        }
+        repl.run()
+        assertEquals(lines("1"), lines)
+    }
+
+    @Test
+    fun `test atexit via build`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(emptyList(), null)
+        repl.build {
+            atExit { o ->
+                o.send("1".asLine())
+            }
         }
         repl.run()
         assertEquals(lines("1"), lines)
@@ -67,6 +69,27 @@ class ReplRegistrationTests {
         }
         assertThrowsWithMessage<IllegalArgumentException>("command a has claimed b") {
             repl.registerCommand("B") { }
+        }
+    }
+
+    @Test
+    fun `test command registration via build`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf("a"), null)
+        repl.build {
+            registerCommand("a", "b") { (_, _, _, o) -> o.send("b".asLine()) }
+        }
+        repl.run()
+        assertLinesMatch(lines("b"), lines)
+        repl.build {
+            assertThrowsWithMessage<IllegalArgumentException>("another command has claimed a") {
+                registerCommand("A") { }
+            }
+            assertThrowsWithMessage<IllegalArgumentException>("command a has claimed alias b") {
+                registerCommand("__", "B") { }
+            }
+            assertThrowsWithMessage<IllegalArgumentException>("command a has claimed b") {
+                registerCommand("B") { }
+            }
         }
     }
 

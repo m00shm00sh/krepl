@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.moshy.krepl"
-version = "0.0.1"
+version = "0.1.0"
 
 repositories {
     mavenCentral()
