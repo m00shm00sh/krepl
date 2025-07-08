@@ -16,17 +16,16 @@ import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.sync.withLock
 import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.Reader
+import java.util.concurrent.Semaphore
 
 class Repl private constructor(
     private val inputProducer: InputProducer,
@@ -34,16 +33,21 @@ class Repl private constructor(
     private val prompt: PromptSupplier?
 ) {
     // block concurrent modification
-    private val runLock = Mutex()
+    private val runSema = Semaphore(1)
 
-    private suspend inline fun <R> withRunLock(block: () -> R): R =
-        runLock.withLock {
-            block()
+    private inline fun <R> withRunLock(block: () -> R): R {
+        if (!runSema.tryAcquire())
+            throw IllegalStateException("active run lock")
+        try {
+            return block()
+        } finally {
+            runSema.release()
         }
+    }
 
     /** Add exit handler, exception classes, and commands. */
-    suspend fun build(block: Builder.() -> Unit) =
-        runLock.withLock {
+    fun build(block: Builder.() -> Unit) =
+        withRunLock {
             Builder().block()
         }
 
@@ -52,7 +56,7 @@ class Repl private constructor(
 
     private var _atExit: (suspend (OutputSendChannel) -> Unit)? = null
     /** Set at-exit handler. Does not get invoked if a fatal exception was received. */
-    suspend fun atExit(func: suspend (OutputSendChannel) -> Unit) =
+   fun atExit(func: suspend (OutputSendChannel) -> Unit) =
         withRunLock { atExitUnlocked(func) }
     private fun atExitUnlocked(func: suspend (OutputSendChannel) -> Unit) {
         require(_atExit == null) {
@@ -69,9 +73,9 @@ class Repl private constructor(
 
     // Whether to dump stack trace when encountering an error.
     private var dumpStacktrace: Boolean = false
-    suspend fun enableDumpingStacktrace() =
+    fun enableDumpingStacktrace() =
         withRunLock { dumpStacktrace = true }
-    suspend fun disableDumpingStacktrace() =
+    fun disableDumpingStacktrace() =
         withRunLock { dumpStacktrace = false }
     // Classes in this set do not generate a stack trace.
     private val stacktraceExclusionFilter: MutableSet<KClass<out Throwable>> = mutableSetOf()
@@ -79,9 +83,9 @@ class Repl private constructor(
     private val stacktraceFatalFilter: MutableSet<KClass<out Throwable>> = mutableSetOf()
 
     /** Registers exception class [E] to cause the Repl to quit. */
-    suspend inline fun <reified E: Throwable> quitOnException() =
+    inline fun <reified E: Throwable> quitOnException() =
         quitOnException(E::class)
-    suspend fun quitOnException(kc: KClass<out Throwable>) =
+    fun quitOnException(kc: KClass<out Throwable>) =
         withRunLock { quitOnExceptionUnlocked(kc) }
     private fun quitOnExceptionUnlocked(kc: KClass<out Throwable>) {
         checkExceptionClass(kc, stacktraceFatalFilter)
@@ -89,9 +93,9 @@ class Repl private constructor(
         stacktraceFatalFilter.add(kc)
     }
     /** Registers exception class [E] to not print a stack trace. */
-    suspend inline fun <reified E: Throwable> filterFromStacktrace() =
+    inline fun <reified E: Throwable> filterFromStacktrace() =
         filterFromStacktrace(E::class)
-    suspend fun filterFromStacktrace(kc: KClass<out Throwable>) =
+    fun filterFromStacktrace(kc: KClass<out Throwable>) =
         withRunLock { filterFromStacktraceUnlocked(kc) }
     private fun filterFromStacktraceUnlocked(kc: KClass<out Throwable>) {
         checkExceptionClass(kc, stacktraceExclusionFilter)
@@ -130,7 +134,7 @@ class Repl private constructor(
      * @see [LineSemantics]
      * @see [State]
      */
-    suspend fun registerCommand(
+    fun registerCommand(
         name: String,
         vararg aliases: String,
         help: String? = null,
@@ -510,7 +514,7 @@ class Repl private constructor(
          * @param outputStream output stream to launch a default line consumer for
          * @param prompt prompt supplier; set to null to not print any prompt
          */
-        suspend operator fun invoke(
+        operator fun invoke(
             inputStream: InputStream = System.`in`,
             outputStream: OutputStream = System.out,
             prompt: PromptSupplier? = { "" }
@@ -526,7 +530,7 @@ class Repl private constructor(
          * @param outputConsumer suspending line consumer
          * @param prompt prompt supplier; set to null to not print any prompt
          */
-        suspend operator fun invoke(
+        operator fun invoke(
             inputProducer: InputProducer,
             outputConsumer: OutputConsumer,
             prompt: PromptSupplier? = { "" }

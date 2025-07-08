@@ -3,10 +3,10 @@ package com.moshy.krepl.test_internal
 import com.moshy.krepl.InputProducer
 import com.moshy.krepl.Output
 import com.moshy.krepl.OutputConsumer
+import com.moshy.krepl.Repl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.SendChannel
@@ -14,9 +14,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import java.util.concurrent.Semaphore
+import kotlin.reflect.KProperty1
+import kotlin.reflect.full.memberProperties
+import kotlin.reflect.jvm.isAccessible
 import kotlin.test.fail
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 internal fun inputWriter(lines: List<String>): InputProducer = {
@@ -65,12 +67,25 @@ internal fun withTimeoutOneSecond(block: suspend TestScope.() -> Unit) =
 // Forces a delay by switching to default CoroutineContext. Used to convert delay from a yield back to a wait.
 internal suspend fun hardDelay(millis: Long) = withContext(Dispatchers.Default) { delay(millis) }
 
-internal suspend fun assertBlockTimesOut(millis: Long, message: String? = null, block: suspend () -> Unit) =
+internal fun assertRunLockIsHeld(message: String? = null, block: () -> Unit) =
     try {
-        withTimeout(10.milliseconds) {
-            block()
-            fail(message ?: "no timeout")
-        }
-    } catch (_: TimeoutCancellationException) {
+        block()
+        fail(message ?: "no lock")
+    } catch (_: IllegalStateException) {
     }
 
+internal fun Repl.waitForRunSema(nTries: Int = 60) {
+    val getRunSema = this::class.memberProperties.single { it.name == "runSema" }
+        .getter
+        .apply { isAccessible = true }
+            as KProperty1.Getter<Repl, Semaphore>
+    var nTries = nTries
+    while (getRunSema.invoke(this).availablePermits() > 0) {
+        if (nTries > 0) {
+            Thread.sleep(1000)
+            --nTries
+        }
+        else
+            throw RuntimeException("failed to wait for runSema")
+    }
+}

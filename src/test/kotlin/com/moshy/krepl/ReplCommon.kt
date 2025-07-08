@@ -10,10 +10,10 @@ import kotlinx.coroutines.channels.SendChannel
  * Factory functions for the Repl states that will be of use in testing
  */
 @Suppress("TestFunctionName")
-internal suspend fun NoopRepl() = Repl(SendChannel<String>::noop, ReceiveChannel<Output>::noop)
+internal fun NoopRepl() = Repl(SendChannel<String>::noop, ReceiveChannel<Output>::noop)
 
 @Suppress("TestFunctionName")
-internal suspend fun IoRepl(inputLines: List<String>, promptSupplier: (() -> String)? = { "" }) =
+internal fun IoRepl(inputLines: List<String>, promptSupplier: (() -> String)? = { "" }) =
     outputCollector().run {
         Repl(inputWriter(inputLines), readerSupplier, promptSupplier) to collectedLines
     }
