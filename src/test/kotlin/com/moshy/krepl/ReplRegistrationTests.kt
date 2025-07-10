@@ -24,18 +24,6 @@ class ReplRegistrationTests {
     }
 
     @Test
-    fun `test atexit via build`() = withTimeoutOneSecond {
-        val (repl, lines) = IoRepl(emptyList(), null)
-        repl.build {
-            atExit { o ->
-                o.send("1".asLine())
-            }
-        }
-        repl.run()
-        assertEquals(lines("1"), lines)
-    }
-
-    @Test
     fun `test atexit invalid argument`() = withTimeoutOneSecond {
         val repl = NoopRepl()
         repl.atExit { }
@@ -69,27 +57,6 @@ class ReplRegistrationTests {
         }
         assertThrowsWithMessage<IllegalArgumentException>("command a has claimed b") {
             repl.registerCommand("B") { }
-        }
-    }
-
-    @Test
-    fun `test command registration via build`() = withTimeoutOneSecond {
-        val (repl, lines) = IoRepl(listOf("a"), null)
-        repl.build {
-            registerCommand("a", "b") { (_, _, _, o) -> o.send("b".asLine()) }
-        }
-        repl.run()
-        assertLinesMatch(lines("b"), lines)
-        repl.build {
-            assertThrowsWithMessage<IllegalArgumentException>("another command has claimed a") {
-                registerCommand("A") { }
-            }
-            assertThrowsWithMessage<IllegalArgumentException>("command a has claimed alias b") {
-                registerCommand("__", "B") { }
-            }
-            assertThrowsWithMessage<IllegalArgumentException>("command a has claimed b") {
-                registerCommand("B") { }
-            }
         }
     }
 

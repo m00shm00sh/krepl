@@ -45,20 +45,12 @@ class Repl private constructor(
         }
     }
 
-    /** Add exit handler, exception classes, and commands. */
-    fun build(block: Builder.() -> Unit) =
-        withRunLock {
-            Builder().block()
-        }
-
     /** Get calling context so that child coroutines have the desired parent. */
     private suspend inline fun scope(): CoroutineScope = CoroutineScope(currentCoroutineContext())
 
     private var _atExit: (suspend (OutputSendChannel) -> Unit)? = null
     /** Set at-exit handler. Does not get invoked if a fatal exception was received. */
-   fun atExit(func: suspend (OutputSendChannel) -> Unit) =
-        withRunLock { atExitUnlocked(func) }
-    private fun atExitUnlocked(func: suspend (OutputSendChannel) -> Unit) {
+   fun atExit(func: suspend (OutputSendChannel) -> Unit) {
         require(_atExit == null) {
             "at-exit handler already set"
         }
@@ -73,10 +65,8 @@ class Repl private constructor(
 
     // Whether to dump stack trace when encountering an error.
     private var dumpStacktrace: Boolean = false
-    fun enableDumpingStacktrace() =
-        withRunLock { dumpStacktrace = true }
-    fun disableDumpingStacktrace() =
-        withRunLock { dumpStacktrace = false }
+    fun enableDumpingStacktrace() { dumpStacktrace = true }
+    fun disableDumpingStacktrace() { dumpStacktrace = false }
     // Classes in this set do not generate a stack trace.
     private val stacktraceExclusionFilter: MutableSet<KClass<out Throwable>> = mutableSetOf()
     // Classes in this set cause the repl to quit.
@@ -85,9 +75,7 @@ class Repl private constructor(
     /** Registers exception class [E] to cause the Repl to quit. */
     inline fun <reified E: Throwable> quitOnException() =
         quitOnException(E::class)
-    fun quitOnException(kc: KClass<out Throwable>) =
-        withRunLock { quitOnExceptionUnlocked(kc) }
-    private fun quitOnExceptionUnlocked(kc: KClass<out Throwable>) {
+    fun quitOnException(kc: KClass<out Throwable>) {
         checkExceptionClass(kc, stacktraceFatalFilter)
         logger.debug("fatal-exception {}", kc)
         stacktraceFatalFilter.add(kc)
@@ -95,9 +83,7 @@ class Repl private constructor(
     /** Registers exception class [E] to not print a stack trace. */
     inline fun <reified E: Throwable> filterFromStacktrace() =
         filterFromStacktrace(E::class)
-    fun filterFromStacktrace(kc: KClass<out Throwable>) =
-        withRunLock { filterFromStacktraceUnlocked(kc) }
-    private fun filterFromStacktraceUnlocked(kc: KClass<out Throwable>) {
+    fun filterFromStacktrace(kc: KClass<out Throwable>) {
         checkExceptionClass(kc, stacktraceExclusionFilter)
         logger.debug("filter-stack-trace {}", kc)
         stacktraceExclusionFilter.add(kc)
@@ -141,19 +127,6 @@ class Repl private constructor(
         usage: String? = null,
         semantics: LineSemantics = LineSemantics.NONE,
         function: suspend (State) -> Unit
-    ) = withRunLock {
-        registerCommandUnlocked(
-            name, *aliases,
-            help = help, usage = usage, semantics = semantics, function = function
-        )
-    }
-    private fun registerCommandUnlocked(
-        name: String,
-        vararg aliases: String,
-        help: String?,
-        usage: String?,
-        semantics: LineSemantics,
-        function: suspend (State) -> Unit
     ) {
         val nameLower = name.lowercase()
         val aliasesLower = aliases.map(String::lowercase)
@@ -191,41 +164,6 @@ class Repl private constructor(
 
     enum class LineSemantics {
         NONE, CONSUME, PEEK
-    }
-
-    inner class Builder {
-        fun atExit(func: suspend (OutputSendChannel) -> Unit) =
-            atExitUnlocked(func)
-
-        fun enableDumpingStacktrace() {
-            dumpStacktrace = true
-        }
-        fun disableDumpingStacktrace() {
-            dumpStacktrace = false
-        }
-
-        inline fun <reified E: Throwable> quitOnException() =
-            quitOnException(E::class)
-        fun quitOnException(kc: KClass<out Throwable>) =
-            quitOnExceptionUnlocked(kc)
-
-        inline fun <reified E: Throwable> filterFromStacktrace() =
-            filterFromStacktrace(E::class)
-        fun filterFromStacktrace(kc: KClass<out Throwable>) =
-            filterFromStacktraceUnlocked(kc)
-
-        fun registerCommand(
-            name: String,
-            vararg aliases: String,
-            help: String? = null,
-            usage: String? = null,
-            semantics: LineSemantics = LineSemantics.NONE,
-            function: suspend (State) -> Unit
-        ) = registerCommandUnlocked(
-                name, *aliases,
-                help = help, usage = usage, semantics = semantics, function = function
-            )
-
     }
 
     /** Start the REPL.
@@ -536,68 +474,66 @@ class Repl private constructor(
             prompt: PromptSupplier? = { "" }
         ) =
             Repl(inputProducer, outputConsumer, prompt).apply {
-                build {
-                    registerCommand(
-                        "exit", "quit", "-q",
-                        usage = "exit",
-                        help = "Exits the interpreter"
-                    ) { _ -> throw Quit() }
-                    registerCommand(
-                        "help", "-h", "?",
-                        usage = "help [command]",
-                        help = "Print the list of available commands, or help for specified command"
-                    ) { (pos, _, _, out) -> help(pos, out) }
-                    registerCommand(
-                        "collect", "collect-lines", "c$", "<<",
-                        usage = "<< delimiter",
-                        help = "Collects lines until delimiter sequence, then saves the lines" +
-                                " for the next command with line-consume semantics"
-                    ) { (pos, _, `in`, out) ->
-                        val delim = pos.requireOne { "expected one delimiter" }
-                        delimCollector(append = false, delim, `in`, out)
-                    }
-                    registerCommand(
-                        "collect-more", "collect-more-lines", "c+$", "+<<",
-                        usage = "+<< delimiter",
-                        help = "Collects more lines until delimiter sequence is printer, then appends the lines" +
-                                " for the next command with line-consume semantics"
-                    ) { (pos, _, `in`, out) ->
-                        val delim = pos.requireOne { "expected one delimiter" }
-                        delimCollector(append = true, delim, `in`, out)
-                    }
-                    registerCommand(
-                        "collect-from-file", "c<", "<",
-                        usage = "< filename",
-                        help = "Collects lines from a file, then saves the lines" +
-                                " for the next command with line-consume semantics"
-                    ) { (pos, _, _, out) ->
-                        val fileName = pos.requireOne { "expected one filename" }
-                        fileCollector(append = false, fileName, out)
-                    }
-                    registerCommand(
-                        "collect-more-from-file", "c+<", "+<",
-                        usage = "+< filename",
-                        help = "Collects more lines from a file, then appends the lines" +
-                                " for the next command with line-consume semantics"
-                    ) { (pos, _, _, out) ->
-                        val fileName = pos.requireOne { "expected one filename" }
-                        fileCollector(append = true, fileName, out)
-                    }
-                    registerCommand(
-                        "peek", "peek-collection-buffer", "c>", ">",
-                        usage = ">",
-                        help = "Dumps contents of collection buffer without consuming it",
-                        semantics = LineSemantics.PEEK
-                    ) { (lines, _, _, out) ->
-                        lines.forEach { out.send(it.asLine()) }
-                    }
-                    registerCommand(
-                        "clear-collection-buffer", "clear", "!-",
-                        usage = "clear",
-                        help = "Clears collection buffer",
-                        semantics = LineSemantics.CONSUME
-                    ) { _ -> }
+                registerCommand(
+                    "exit", "quit", "-q",
+                    usage = "exit",
+                    help = "Exits the interpreter"
+                ) { _ -> throw Quit() }
+                registerCommand(
+                    "help", "-h", "?",
+                    usage = "help [command]",
+                    help = "Print the list of available commands, or help for specified command"
+                ) { (pos, _, _, out) -> help(pos, out) }
+                registerCommand(
+                    "collect", "collect-lines", "c$", "<<",
+                    usage = "<< delimiter",
+                    help = "Collects lines until delimiter sequence, then saves the lines" +
+                            " for the next command with line-consume semantics"
+                ) { (pos, _, `in`, out) ->
+                    val delim = pos.requireOne { "expected one delimiter" }
+                    delimCollector(append = false, delim, `in`, out)
                 }
+                registerCommand(
+                    "collect-more", "collect-more-lines", "c+$", "+<<",
+                    usage = "+<< delimiter",
+                    help = "Collects more lines until delimiter sequence is printer, then appends the lines" +
+                            " for the next command with line-consume semantics"
+                ) { (pos, _, `in`, out) ->
+                    val delim = pos.requireOne { "expected one delimiter" }
+                    delimCollector(append = true, delim, `in`, out)
+                }
+                registerCommand(
+                    "collect-from-file", "c<", "<",
+                    usage = "< filename",
+                    help = "Collects lines from a file, then saves the lines" +
+                            " for the next command with line-consume semantics"
+                ) { (pos, _, _, out) ->
+                    val fileName = pos.requireOne { "expected one filename" }
+                    fileCollector(append = false, fileName, out)
+                }
+                registerCommand(
+                    "collect-more-from-file", "c+<", "+<",
+                    usage = "+< filename",
+                    help = "Collects more lines from a file, then appends the lines" +
+                            " for the next command with line-consume semantics"
+                ) { (pos, _, _, out) ->
+                    val fileName = pos.requireOne { "expected one filename" }
+                    fileCollector(append = true, fileName, out)
+                }
+                registerCommand(
+                    "peek", "peek-collection-buffer", "c>", ">",
+                    usage = ">",
+                    help = "Dumps contents of collection buffer without consuming it",
+                    semantics = LineSemantics.PEEK
+                ) { (lines, _, _, out) ->
+                    lines.forEach { out.send(it.asLine()) }
+                }
+                registerCommand(
+                    "clear-collection-buffer", "clear", "!-",
+                    usage = "clear",
+                    help = "Clears collection buffer",
+                    semantics = LineSemantics.CONSUME
+                ) { _ -> }
             }
     }
 }

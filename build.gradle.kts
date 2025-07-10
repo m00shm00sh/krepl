@@ -5,10 +5,11 @@ plugins {
 }
 
 group = "com.moshy.krepl"
-version = "0.2.0"
+version = "0.3.0"
 
 repositories {
     mavenCentral()
+    maven("https://jitpack.io")
 }
 
 dependencies {
@@ -16,6 +17,7 @@ dependencies {
     implementation(kotlin("reflect"))
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.2")
     implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("com.github.m00shm00sh:kcontainers:v0.6.1")
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-debug:1.4.0")

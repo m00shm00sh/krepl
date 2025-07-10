@@ -233,12 +233,10 @@ class ReplFailureTests {
         class E2: E1() {
             override fun toString() = "\$E2"
         }
-        repl.build {
-            registerCommand("a") {
-                throw E2()
-            }
-            quitOnException<E1>()
+        repl.registerCommand("a") {
+            throw E2()
         }
+        repl.quitOnException<E1>()
         ignoreException { repl.run() }
         assertLinesMatch(
             listOf(
@@ -317,9 +315,7 @@ class ReplFailureTests {
     @Test
     fun `test stack dump enabled via build`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"))
-        repl.build {
-            enableDumpingStacktrace()
-        }
+        repl.enableDumpingStacktrace()
         class E1: RuntimeException()
         repl.registerCommand("a") {
             throw E1()
@@ -361,7 +357,7 @@ class ReplFailureTests {
     @Test
     fun `test stack dump filtering via build`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"))
-        repl.build {
+        repl.apply {
             enableDumpingStacktrace()
             open class E1 : RuntimeException()
             class E2 : E1()
