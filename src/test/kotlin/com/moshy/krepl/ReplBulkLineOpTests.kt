@@ -22,7 +22,7 @@ class ReplBulkLineOpTests {
             "ab c",
             "d e=f g",
             "@@",
-            ">"
+            "peek"
         ), null)
         repl.run()
         assertLinesMatch(lines(
@@ -37,8 +37,8 @@ class ReplBulkLineOpTests {
         val (repl, lines) = IoRepl(listOf(
             "<< @@",
             "@@",
-            "!-",
-            ">"
+            "clear",
+            "peek"
         ), null)
         repl.run()
         assertLinesMatch(lines(
@@ -58,7 +58,7 @@ class ReplBulkLineOpTests {
             "h i=j",
             "k",
             "##",
-            ">"
+            "peek"
         ), null)
         repl.run()
         assertLinesMatch(lines(
@@ -75,7 +75,7 @@ class ReplBulkLineOpTests {
     fun `test file consume`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf(
             "< ab",
-            ">"
+            "peek"
         ), null)
         repl.fileReader = ::testingFileReaderSupplier
         repl.run()
@@ -93,7 +93,8 @@ class ReplBulkLineOpTests {
             "ab c",
             "d e=f g",
             "@@",
-            "+< ab", ">"
+            "+< ab",
+            "peek"
         ), null)
         repl.fileReader = ::testingFileReaderSupplier
         repl.run()
@@ -114,7 +115,8 @@ class ReplBulkLineOpTests {
             "ab c",
             "d e=f g",
             "@@",
-            "+< z", ">"
+            "+< z",
+            "peek"
         ), null)
         repl.fileReader = ::testingFileReaderSupplier
         repl.run()
@@ -134,7 +136,8 @@ class ReplBulkLineOpTests {
             "ab c",
             "d e=f g",
             "@@",
-            "+< thrower", ">"
+            "+< thrower",
+            "peek"
         ), null)
         repl.fileReader = ::testingFileReaderSupplier
         repl.run()

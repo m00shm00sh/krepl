@@ -26,12 +26,34 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.Reader
 import java.util.concurrent.Semaphore
+import kotlin.collections.set
 
-class Repl private constructor(
+/**
+ * @param inputProducer suspending line producer
+ * @param outputConsumer suspending line consumer
+ * @param prompt prompt supplier; set to null to not print any prompt
+ */
+class Repl(
     private val inputProducer: InputProducer,
     private val outputConsumer: OutputConsumer,
-    private val prompt: PromptSupplier?
+    private val prompt: PromptSupplier? = { "" },
+    private val allowOverwriteCommand: Boolean = false,
 ) {
+    /**
+     * @param inputStream input stream to launch a default line producer for
+     * @param outputStream output stream to launch a default line consumer for
+     * @param prompt prompt supplier; set to null to not print any prompt
+     */
+    constructor(
+        inputStream: InputStream = System.`in`,
+        outputStream: OutputStream = System.out,
+        prompt: PromptSupplier? = { "" }
+    ): this(
+        lineProducer(inputStream.reader()),
+        lineConsumer(outputStream.writer()),
+        prompt
+    )
+
     // block concurrent modification
     private val runSema = Semaphore(1)
 
@@ -59,9 +81,6 @@ class Repl private constructor(
     }
 
     private var collectedLines: List<String>? = null
-
-    private val commands: MutableMap<String, Command> = mutableMapOf()
-    private val aliases: MutableMap<String, String> = mutableMapOf()
 
     // Whether to dump stack trace when encountering an error.
     private var dumpStacktrace: Boolean = false
@@ -102,64 +121,182 @@ class Repl private constructor(
             }
         }
 
-    private data class Command(
-        val aliases: Set<String>,
-        val help: String?,
-        val usage: String?,
-        val function: suspend (State) -> Unit,
-        val semantics: LineSemantics,
+    private val builtins: Map<String, CommandEntry> = buildMap {
+        val cExit = CommandEntry("exit",
+                usage = "exit",
+                help = "Exits the interpreter"
+            ) { throw Quit() }
+        for (c in listOf(cExit.name, "quit"))
+            this[c] = cExit
+        val cHelp = CommandEntry("help",
+                usage = "help [command]",
+                help = "Print the list of available commands, or help for specified command"
+            ) { (pos, _, _, out) -> help(pos, out) }
+        for (c in listOf(cHelp.name, "?"))
+            this[c] = cHelp
+        val cCollect = CommandEntry("collect",
+                usage = "<< delimiter",
+                help = "Collects lines until delimiter sequence, then saves the lines" +
+                        " for the next command with line-consume semantics"
+            ) { (pos, _, `in`, out) ->
+                val delim = pos.requireOne { "expected one delimiter" }
+                delimCollector(append = false, delim, `in`, out)
+            }
+        for (c in listOf(cCollect.name, "collect-lines", "<<"))
+            this[c] = cCollect
+        val cCollectMore = CommandEntry("collect-more",
+                usage = "+<< delimiter",
+                help = "Collects more lines until delimiter sequence is printer, then appends the lines" +
+                        " for the next command with line-consume semantics"
+            ) { (pos, _, `in`, out) ->
+                val delim = pos.requireOne { "expected one delimiter" }
+                delimCollector(append = true, delim, `in`, out)
+            }
+        for (c in listOf(cCollectMore.name, "collect-more-lines", "+<<"))
+            this[c] = cCollectMore
+        val cCollectFromFile = CommandEntry("collect-from-file",
+                usage = "< filename",
+                help = "Collects lines from a file, then saves the lines" +
+                        " for the next command with line-consume semantics"
+            ) { (pos, _, _, out) ->
+                val fileName = pos.requireOne { "expected one filename" }
+                fileCollector(append = false, fileName, out)
+            }
+        for (c in listOf(cCollectFromFile.name, "<"))
+            this[c] = cCollectFromFile
+        val cCollectMoreFromFile = CommandEntry("collect-more-from-file",
+                usage = "+< filename",
+                help = "Collects more lines from a file, then appends the lines" +
+                        " for the next command with line-consume semantics"
+            ) { (pos, _, _, out) ->
+                val fileName = pos.requireOne { "expected one filename" }
+                fileCollector(append = true, fileName, out)
+            }
+        for (c in listOf(cCollectMoreFromFile.name, "+<"))
+            this[c] = cCollectMoreFromFile
+        val cPeekBuf = CommandEntry("peek",
+                usage = "peek",
+                help = "Dumps contents of collection buffer without consuming it",
+                semantics = LineSemantics.PEEK
+            ) { (lines, _, _, out) ->
+                lines.forEach { out.send(it.asLine()) }
+            }   
+        for (c in listOf(cPeekBuf.name, "peek-collection-buffer", "?<"))
+            this[c] = cPeekBuf
+        val cClearBuf = CommandEntry("clear",
+                usage = "clear",
+                help = "Clears collection buffer",
+                semantics = LineSemantics.CONSUME
+            ) { }
+        for (c in listOf(cClearBuf.name, "clear-collection-buffer", "!<"))
+            this[c] = cClearBuf
+        if (logger.isTraceEnabled) {
+            for ((k, v) in this.entries)
+                logger.trace("builtin {} {}", quote(k), quote(v.name))
+        }
+    }
+
+    val builtinCommands: Set<String>
+        get() = builtins.keys
+
+    private val commands: MutableMap<String, CommandEntry> = mutableMapOf()
+
+    val registeredCommands: Set<String>
+        get() = commands.keys
+    
+    /** Register a command.
+     * 
+     * Usage:
+     * ```
+     *      repl[command] {
+     *          handler = ...
+     *          ...
+     *      }
+     * ```
+     * @see EntryBuilder
+     */
+    operator fun get(name: String): EntryInvoker =
+        name.lowercase().let { Entry(it, commands[it]) }
+
+    /**
+     * Register an alias.
+     *
+     * Usage:
+     * ```
+     *      repl[alias] = repl[command]
+     * ```
+     * Note: [name] cannot be a builtin
+     */
+    operator fun set(name: String, value: EntryInvoker) {
+        require(value is Entry) {
+            "unexpected entry type"
+        }
+        requireNotNull(value.old) {
+            "command ${value.name} not registered (aliasing a builtin is not supported)"
+        }
+        val nameLower = name.lowercase()
+        if (!allowOverwriteCommand) {
+            val owner = commands[nameLower]
+            require(owner == null) {
+                "command ${quote(owner!!.name)} has claimed alias ${quote(nameLower)}"
+            }
+        }
+        commands[nameLower] = value.old
+    }
+
+    interface EntryInvoker {
+        operator fun invoke(block: EntryBuilder.() -> Unit): EntryInvoker
+    }
+    internal inner class Entry(val name: String, val old: CommandEntry? = null) : EntryInvoker {
+        override operator fun invoke(block: EntryBuilder.() -> Unit): Entry {
+            val builder = EntryBuilder().apply(block)
+            if (!allowOverwriteCommand) {
+                val existing = commands[name]
+                require(existing == null) {
+                    "another command or alias has claimed ${quote(name)}"
+                }
+            }
+            requireNotNull(builder.handler) {
+                "unset handler"
+            }
+            val entry = builder.build(name)
+            commands[name] = entry
+            return Entry(name, entry)
+        }
+    }
+
+
+    // TODO: do we need `val refCount = atomic(0)` to upgrade orphan aliases to commands?
+    internal class CommandEntry internal constructor(
+        val name: String,
+        val help: String? = null,
+        val usage: String? = null,
+        val semantics: LineSemantics = LineSemantics.NONE,
+        val handler: (suspend Repl.(State) -> Unit),
     )
 
-    /** Register a command with an optional number of aliases.
-     *
-     * Commands are mapped to lowercase.
-     * @param help detail help message
-     * @param usage short usage method (include command name here)
-     * @param semantics line buffer semantics
-     * @param function callback
+    /**
+     * @property handler command handler
+     * @property help detail help message
+     * @property usage short usage method (include command name here)
+     * @property semantics line buffer semantics
      * @see [LineSemantics]
      * @see [State]
      */
-    fun registerCommand(
-        name: String,
-        vararg aliases: String,
-        help: String? = null,
-        usage: String? = null,
-        semantics: LineSemantics = LineSemantics.NONE,
-        function: suspend (State) -> Unit
+    class EntryBuilder internal constructor(
+        var handler: (suspend Repl.(State) -> Unit)? = null,
+        var help: String? = null,
+        var usage: String? = null,
+        var semantics: LineSemantics = LineSemantics.NONE,
     ) {
-        val nameLower = name.lowercase()
-        val aliasesLower = aliases.map(String::lowercase)
-        require(nameLower !in commands) {
-            "another command has claimed ${quote(nameLower)}"
-        }
-        for (a in aliasesLower) {
-            val owner = this.aliases[a]
-            require(owner == null) {
-                "command ${quote(owner!!)} has claimed alias ${quote(a)}"
-            }
-        }
-        this.aliases[nameLower]?.let {
-            require(false) {
-                "command ${quote(it)} has claimed ${quote(nameLower)}"
-            }
-        }
-
-        val command = Command(
-            aliases = aliasesLower.toSet(),
-            help = help,
-            usage = usage,
-            function = function,
-            semantics = semantics
+        internal fun build(name: String) =
+            CommandEntry(
+                handler = handler!!,
+                name = name,
+                help = help,
+                usage = usage,
+                semantics = semantics,
         )
-        commands[nameLower] = command
-        for (a in aliasesLower) {
-            this.aliases[a] = nameLower
-        }
-        if (aliasesLower.isNotEmpty())
-            logger.trace("Registered command {} with alias(es) {}", nameLower, aliasesLower)
-        else
-            logger.trace("Registered command {}", nameLower)
     }
 
     enum class LineSemantics {
@@ -209,20 +346,21 @@ class Repl private constructor(
                 if (line.isEmpty())
                     continue
                 val toks = line.tokenizeLine()
-                val cmd = commands[toks.cmd] ?: commands[aliases[toks.cmd]]
+                val cmd = builtins[toks.cmd] ?: commands[toks.cmd]
                     ?: throw ReplInvalidArgument("unrecognized command: ${toks.cmd}")
+                suspend fun invokeHandler(s: State) = (this@Repl).(cmd.handler)(s)
                 logger.trace("run: cmd={} semantics={}", toks.cmd, cmd.semantics)
                 val cmdState = makeState(toks, inputChannel, outputChannelThrowing)
                 logger.trace("run: cmd={} pos={} kw={}", toks.cmd, toks.pos, toks.kw)
                 childScope.launch {
                     try {
                         when (cmd.semantics) {
-                            LineSemantics.NONE -> cmd.function(cmdState)
+                            LineSemantics.NONE -> invokeHandler(cmdState)
                             LineSemantics.CONSUME -> {
-                                cmd.function(cmdState.copy(positionalOrLines = consumeLines()))
+                                invokeHandler(cmdState.copy(positionalOrLines = consumeLines()))
                             }
                             LineSemantics.PEEK -> {
-                                cmd.function(cmdState.copy(positionalOrLines = peekLines()))
+                                invokeHandler(cmdState.copy(positionalOrLines = peekLines()))
                             }
                         }
                     } catch (e: Throwable) {
@@ -345,41 +483,40 @@ class Repl private constructor(
     }
 
     private suspend fun help(pos: List<String>, out: OutputSendChannel) {
-        fun generateUsage(name: String, c: Command) =
-            when (c.semantics) {
-                LineSemantics.NONE -> "\t${quote(name)} <no usage message>"
-                else -> "\t${quote(name)} <requires 0+ collected lines>"
+        fun generateUsage(name: String, isBuiltin: Boolean, c: CommandEntry): String {
+            val qn = quote(name)
+            val isB = if (isBuiltin) "(builtin) " else ""
+            return when {
+                c.name != name -> "\t$isB$qn alias for: ${quote(c.name)}"
+                c.semantics == LineSemantics.NONE -> "\t$isB$qn <no usage message>"
+                else -> "\t$isB$qn <requires 0+ collected lines>"
             }
+        }
 
         when (pos.size) {
             0 -> {
                 out.send("Commands:".asLine())
-                for ((name, c) in commands) {
+                for ((name, cmd) in builtins) {
                     when {
-                        c.usage.isNullOrEmpty() -> generateUsage(name, c)
-                        else -> "\t${c.usage}"
+                        cmd.name != name || cmd.usage.isNullOrEmpty() -> generateUsage(name, true, cmd)
+                        else -> "\t(builtin) ${cmd.usage}"
                     }.let { out.send(it.asLine()) }
                 }
-                if (aliases.isNotEmpty()) {
-                    out.send("Aliases:".asLine())
-                    for ((name, c) in commands) {
-                        if (c.aliases.isEmpty())
-                            continue
-                        out.send((
-                            "\t${quote(name)}: " +
-                                    c.aliases.sorted().joinToString(" ", transform = ::quote)
-                        ).asLine())
-                    }
+                for ((name, cmd) in commands) {
+                    when {
+                        cmd.name != name || cmd.usage.isNullOrEmpty() -> generateUsage(name, false, cmd)
+                        else -> "\t${cmd.usage}"
+                    }.let { out.send(it.asLine()) }
                 }
             }
             1 -> {
                 val name = pos[0].lowercase()
-                val cmd = commands[name]
-                    ?: commands[aliases[name]]
+                val (cmd, isBuiltin) = builtins[name]?.let { it to true }
+                    ?: commands[name]?.let { it to false }
                     ?: throw IllegalArgumentException("no match for command ${quote(name)}")
                 cmd.help ?: throw IllegalArgumentException("no help message for command ${quote(name)}")
                 when {
-                    cmd.usage == null -> generateUsage(name, cmd)
+                    cmd.usage == null -> generateUsage(name, isBuiltin, cmd)
                     else -> "\t${cmd.usage}"
                 }.let { out.send(it.substring(1).asLine()) }
                 for (line in cmd.help.lineSequence())
@@ -447,94 +584,7 @@ class Repl private constructor(
 
     /** @see invoke */
     companion object {
-        /**
-         * @param inputStream input stream to launch a default line producer for
-         * @param outputStream output stream to launch a default line consumer for
-         * @param prompt prompt supplier; set to null to not print any prompt
-         */
-        operator fun invoke(
-            inputStream: InputStream = System.`in`,
-            outputStream: OutputStream = System.out,
-            prompt: PromptSupplier? = { "" }
-        ) =
-            invoke(
-                lineProducer(inputStream.reader()),
-                lineConsumer(outputStream.writer()),
-                prompt
-            )
 
-        /**
-         * @param inputProducer suspending line produce
-         * @param outputConsumer suspending line consumer
-         * @param prompt prompt supplier; set to null to not print any prompt
-         */
-        operator fun invoke(
-            inputProducer: InputProducer,
-            outputConsumer: OutputConsumer,
-            prompt: PromptSupplier? = { "" }
-        ) =
-            Repl(inputProducer, outputConsumer, prompt).apply {
-                registerCommand(
-                    "exit", "quit", "-q",
-                    usage = "exit",
-                    help = "Exits the interpreter"
-                ) { _ -> throw Quit() }
-                registerCommand(
-                    "help", "-h", "?",
-                    usage = "help [command]",
-                    help = "Print the list of available commands, or help for specified command"
-                ) { (pos, _, _, out) -> help(pos, out) }
-                registerCommand(
-                    "collect", "collect-lines", "c$", "<<",
-                    usage = "<< delimiter",
-                    help = "Collects lines until delimiter sequence, then saves the lines" +
-                            " for the next command with line-consume semantics"
-                ) { (pos, _, `in`, out) ->
-                    val delim = pos.requireOne { "expected one delimiter" }
-                    delimCollector(append = false, delim, `in`, out)
-                }
-                registerCommand(
-                    "collect-more", "collect-more-lines", "c+$", "+<<",
-                    usage = "+<< delimiter",
-                    help = "Collects more lines until delimiter sequence is printer, then appends the lines" +
-                            " for the next command with line-consume semantics"
-                ) { (pos, _, `in`, out) ->
-                    val delim = pos.requireOne { "expected one delimiter" }
-                    delimCollector(append = true, delim, `in`, out)
-                }
-                registerCommand(
-                    "collect-from-file", "c<", "<",
-                    usage = "< filename",
-                    help = "Collects lines from a file, then saves the lines" +
-                            " for the next command with line-consume semantics"
-                ) { (pos, _, _, out) ->
-                    val fileName = pos.requireOne { "expected one filename" }
-                    fileCollector(append = false, fileName, out)
-                }
-                registerCommand(
-                    "collect-more-from-file", "c+<", "+<",
-                    usage = "+< filename",
-                    help = "Collects more lines from a file, then appends the lines" +
-                            " for the next command with line-consume semantics"
-                ) { (pos, _, _, out) ->
-                    val fileName = pos.requireOne { "expected one filename" }
-                    fileCollector(append = true, fileName, out)
-                }
-                registerCommand(
-                    "peek", "peek-collection-buffer", "c>", ">",
-                    usage = ">",
-                    help = "Dumps contents of collection buffer without consuming it",
-                    semantics = LineSemantics.PEEK
-                ) { (lines, _, _, out) ->
-                    lines.forEach { out.send(it.asLine()) }
-                }
-                registerCommand(
-                    "clear-collection-buffer", "clear", "!-",
-                    usage = "clear",
-                    help = "Clears collection buffer",
-                    semantics = LineSemantics.CONSUME
-                ) { _ -> }
-            }
     }
 }
 

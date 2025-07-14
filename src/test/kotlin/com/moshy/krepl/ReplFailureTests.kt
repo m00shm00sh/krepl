@@ -181,8 +181,8 @@ class ReplFailureTests {
     @Test
     fun `test handling of command cancelling`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"))
-        repl.registerCommand("a") {
-            coroutineScope { cancel() }
+        repl["a"] {
+            handler = { coroutineScope { cancel() } }
         }
         repl.run()
         assertLinesMatch(listOf(
@@ -195,8 +195,8 @@ class ReplFailureTests {
     @Test
     fun `test handling of command throwing exception`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"))
-        repl.registerCommand("a") {
-            require(false)
+        repl["a"] {
+            handler = { require(false) }
         }
         repl.run()
         assertLinesMatch(listOf(
@@ -213,8 +213,8 @@ class ReplFailureTests {
         class E2: E1() {
             override fun toString() = "\$E2"
         }
-        repl.registerCommand("a") {
-            throw E2()
+        repl["a"] {
+            handler = { throw E2() }
         }
         repl.quitOnException<E1>()
         ignoreException { repl.run() }
@@ -233,8 +233,8 @@ class ReplFailureTests {
         class E2: E1() {
             override fun toString() = "\$E2"
         }
-        repl.registerCommand("a") {
-            throw E2()
+        repl["a"] {
+            handler = { throw E2() }
         }
         repl.quitOnException<E1>()
         ignoreException { repl.run() }
@@ -253,8 +253,8 @@ class ReplFailureTests {
         class E2: E1() {
             override fun toString() = "\$E2"
         }
-        repl.registerCommand("a") {
-            throw E2()
+        repl["a"] {
+            handler = { throw E2() }
         }
         repl.quitOnException<E1>()
         assertThrows<E2>{ repl.run() }
@@ -278,8 +278,8 @@ class ReplFailureTests {
             override fun toString() = "\$E2"
         }
         class E3: RuntimeException()
-        repl.registerCommand("a") {
-            throw E2()
+        repl["a"] {
+            handler = { throw E2() }
         }
         repl.quitOnException<E1>()
         repl.quitOnException<E3>()
@@ -295,8 +295,8 @@ class ReplFailureTests {
         val (repl, lines) = IoRepl(listOf("a"))
         repl.enableDumpingStacktrace()
         class E1: RuntimeException()
-        repl.registerCommand("a") {
-            throw E1()
+        repl["a"] {
+            handler = { throw E1() }
         }
         repl.run()
         assertLinesMatch(listOf(
@@ -317,8 +317,8 @@ class ReplFailureTests {
         val (repl, lines) = IoRepl(listOf("a"))
         repl.enableDumpingStacktrace()
         class E1: RuntimeException()
-        repl.registerCommand("a") {
-            throw E1()
+        repl["a"] {
+            handler = { throw E1() }
         }
         repl.run()
         assertLinesMatch(listOf(
@@ -340,8 +340,8 @@ class ReplFailureTests {
         repl.enableDumpingStacktrace()
         open class E1: RuntimeException()
         class E2: E1()
-        repl.registerCommand("a") {
-            throw E2()
+        repl["a"] {
+            handler = { throw E2() }
         }
         repl.filterFromStacktrace<E1>()
         repl.run()
@@ -361,8 +361,8 @@ class ReplFailureTests {
             enableDumpingStacktrace()
             open class E1 : RuntimeException()
             class E2 : E1()
-            registerCommand("a") {
-                throw E2()
+            this["a"] {
+                handler = { throw E2() }
             }
             filterFromStacktrace<E1>()
         }

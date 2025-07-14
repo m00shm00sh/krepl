@@ -26,26 +26,38 @@ class ReplOutputTests {
     @Test
     fun `test output of help`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("help"), null)
-        repl.registerCommand("a", "b", usage = "a b") { }
-        repl.registerCommand("c") { }
-        repl.registerCommand("d", semantics = Repl.LineSemantics.CONSUME) { }
-        repl.registerCommand("e f", "g h") { }
+        repl["a"] {
+            handler = { }
+            usage = "a b"
+        }
+        repl["b"] = repl["a"]
+        repl["c"] {
+            handler = { }
+        }
+        repl["d"] {
+            semantics = Repl.LineSemantics.CONSUME
+            handler = { }
+        }
+        repl["e f"] {
+            handler = { }
+        }
+        repl["g h"] = repl["e f"]
         repl.run()
+        val B = "(builtin) "
         assertLinesMatch(lines(
             "Commands:",
-            "\texit",
-            "\thelp \\[command\\]",
-            "\t<< delimiter",
-            ">>\tclear>>",
+            "\t${B}exit",
+            "\t${B}quit alias for: exit",
+            "\t${B}help [command]",
+            "\t${B}? alias for: help",
+            "\t${B}<< delimiter",
+            ">>\t${B}clear>>",
             "\ta b",
+            "\tb alias for: a",
             "\tc <no usage message>",
             "\td <requires 0\\+ collected lines>",
             "\t\"e f\" <no usage message>",
-            "Aliases:",
-            "\texit: -q quit",
-            "\thelp: -h \\?",
-            ">>\t a: b>>",
-            "\t\"e f\": \"g h\""
+            "\t\"g h\" alias for: \"e f\"",
         ), lines)
     }
 
@@ -59,10 +71,24 @@ class ReplOutputTests {
             "help \"g \"h",
             "help i",
         ), null)
-        repl.registerCommand("a", help = "aa\nbb") { }
-        repl.registerCommand("b", "c") { }
-        repl.registerCommand("g h", "i j", help = "i") { }
-        repl.registerCommand("i", usage = "j", help = "k") { }
+        repl["a"] {
+            help = "aa\nbb"
+            handler = { }
+        }
+        repl["b"] {
+            handler = { }
+        }
+        repl["c"] = repl["b"]
+        repl["g h"] {
+            help = "i"
+            handler = { }
+        }
+        repl["i j"] = repl["g h"]
+        repl["i"] {
+            usage = "j"
+            help = "k"
+            handler = { }
+        }
         repl.run()
         assertLinesMatch(lines(
             "a <no usage message>",

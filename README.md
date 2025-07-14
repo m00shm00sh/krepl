@@ -15,9 +15,12 @@ All the user has to do is register a command, with optional alias(es), usage mes
 ```kotlin
 suspend fun interactiveShell() {
     val r = Repl()
-    r.registerCommand("hello", usage = "hello from=<who>") { st: State ->
-        val who = requireNotNull(st.keywords["from"]) { "need name" }
-        st.outputChannel.send("$who says hi")
+    r["hello"] {
+        usage = "hello from=<who>"
+        handler = {
+            val who = requireNotNull(it.keywords["from"]) { "need name" }
+            it.outputChannel.send("$who says hi")
+        }
     }
     launch { r.run() }.join()
 }
@@ -57,9 +60,8 @@ the command.
 
 ## Locking
 ### Run-lock
-Command-related, exit-related, and exception-related data is protected by a run lock that will suspend the calling
-coroutine if the lock is already held.
-To simplify locking, `build()` can be used to build commands etc before running.
+`run` is locked to prevent a handler from re-entrantly launching the repl loop.
+Everything else is unlocked, without guarantees for concurrency safety.
 
 
 ## Exceptions
@@ -85,9 +87,9 @@ if a child or channel throws it or any of its subclasses.
 It is an error to have filtered exceptions if the state is not *stack-dump-enabled*.
 
 ## Builtins
-### exit, quit, -q
+### exit, quit
 Quits the interpreter without a message.
-### help, -h, \?
+### help, ?
 Prints the list of available commands, or help for specified command.
 
 If a command is registered with a non-null usage, its value is printed in general help.
@@ -99,27 +101,27 @@ If a command is registered with non-null help, its value is printed when `help <
 
 In the list of available commands, aliases are printed in ascending order.
 
-### <<, collect, collect-lines, c$
+### <<, collect, collect-lines
 Collects until the delimiter specified as the sole positional argument and
 sets the line buffer to the collected lines. Lines remain unchanged on failure.
 
-### +<<, collect-more, collect-more-lines, c+$
+### +<<, collect-more, collect-more-lines
 Collects until the delimiter specified as the sole positional argument and
 appends the collected contents to the line buffer.
 
-### <, collect-from-file, c<
+### <, collect-from-file
 Collects all lines from file specified as the sole positional argument and
 sets the line buffer to the collected lines. Lines remain unchanged on failure including
 file not found.
 
-### +<, collect-more-from-file, c+<
+### +<, collect-more-from-file
 Collects all lines from file specified as the sole positional argument and
 appends the collected contents to the line buffer.
 
-### >, peek, peek-collection-buffer
+### ?<, peek, peek-collection-buffer
 Dumps contents of line buffer without consuming it.
 
-### !-, clear, clear-collection-buffer
+### !<, clear, clear-collection-buffer
 Clears line buffer.
 
 ## Instance parameters

@@ -46,18 +46,32 @@ class ReplRegistrationTests {
     @Test
     fun `test command registration`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"), null)
-        repl.registerCommand("a", "b") { (_, _, _, o) -> o.send("b".asLine()) }
+        repl["a"] {
+            handler = { (_, _, _, o) -> o.send("b".asLine()) }
+        }
+        repl["b"] = repl["a"]
         repl.run()
         assertLinesMatch(lines("b"), lines)
-        assertThrowsWithMessage<IllegalArgumentException>("another command has claimed a") {
-            repl.registerCommand("A") { }
+        assertThrowsWithMessage<IllegalArgumentException>("another command or alias has claimed a") {
+            repl["A"] {
+            }
         }
         assertThrowsWithMessage<IllegalArgumentException>("command a has claimed alias b") {
-            repl.registerCommand("__", "B") { }
+            repl["B"] = repl["A"]
         }
-        assertThrowsWithMessage<IllegalArgumentException>("command a has claimed b") {
-            repl.registerCommand("B") { }
-        }
+        val expBuiltins = setOf(
+            "exit", "quit",
+            "help", "?",
+            "collect", "collect-lines", "<<",
+            "collect-more", "collect-more-lines", "+<<",
+            "collect-from-file", "<",
+            "collect-more-from-file", "+<",
+            "peek", "peek-collection-buffer", "?<",
+            "clear", "clear-collection-buffer", "!<"
+        )
+        val expRegistered = setOf("a", "b")
+        assertEquals(expBuiltins, repl.builtinCommands)
+        assertEquals(expRegistered, repl.registeredCommands)
     }
 
     private companion object {
