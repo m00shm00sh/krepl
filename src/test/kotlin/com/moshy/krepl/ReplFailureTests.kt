@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import kotlin.test.assertEquals
 import kotlin.test.fail
 import org.junit.jupiter.api.Assertions.assertLinesMatch
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
@@ -436,6 +437,33 @@ class ReplFailureTests {
             "(E) unrecognized command: aaa",
         ), lines)
     }
+
+    @Test
+    fun `test remove builtin`() = withTimeoutOneSecond {
+        val repl = NoopRepl()
+        assertThrows<IllegalArgumentException> {
+            repl.remove("quit")
+        }
+        assertTrue("quit" in repl.builtinCommands)
+    }
+
+    @Test
+    fun `test remove builtin inside handler`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf(
+            "a",
+        ), null)
+        repl["a"] {
+            handler = {
+                remove("quit")
+            }
+        }
+        repl.run()
+        assertLinesMatch(listOf(
+            "\\(a:E\\) .*: refusing to remove builtin\n"
+        ), lines)
+        assertTrue("quit" in repl.builtinCommands)
+    }
+
 
     private companion object {
         @JvmStatic

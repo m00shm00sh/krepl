@@ -244,6 +244,20 @@ class Repl(
         commands[nameLower] = value.old
     }
 
+    /** Unregister command or alias. */
+    fun remove(name: String): Boolean =
+        name.lowercase().let {
+            require (it !in builtinCommands) {
+                "refusing to remove builtin"
+            }
+            commands.remove(it) != null
+        }
+
+    /** Unregister all non-builtin commands or aliases. */
+    fun clear() {
+        commands.clear()
+    }
+
     interface EntryInvoker {
         operator fun invoke(block: EntryBuilder.() -> Unit): EntryInvoker
     }

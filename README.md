@@ -27,11 +27,12 @@ suspend fun interactiveShell() {
 ```
 
 ## Command details
-A command callback takes a `State` argument, which has members
+A command callback takes a `Repl` receiver and `State` argument, which has members
 - `positionalOrLines`, containing positional tokens or saved lines (see below),
 - `keywords`, containing keyword tokens
 - `inputChannel`, containing a non-cancellable receive channel for auxiliary lines,
 - `outputChannel`, containing a non-closeable send channel for sending output lines
+The receiver can be used to add or remove command registrations at run time.
 
 ### Semantics
 By default, a command has `semantics = Repl.LineSemantics.NONE`.
