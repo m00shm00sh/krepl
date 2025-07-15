@@ -70,16 +70,6 @@ class Repl(
     /** Get calling context so that child coroutines have the desired parent. */
     private suspend inline fun scope(): CoroutineScope = CoroutineScope(currentCoroutineContext())
 
-    private var _atExit: (suspend (OutputSendChannel) -> Unit)? = null
-    /** Set at-exit handler. Does not get invoked if a fatal exception was received. */
-   fun atExit(func: suspend (OutputSendChannel) -> Unit) {
-        require(_atExit == null) {
-            "at-exit handler already set"
-        }
-        logger.debug("set at-exit")
-        _atExit = func
-    }
-
     private var collectedLines: List<String>? = null
 
     // Whether to dump stack trace when encountering an error.
@@ -399,10 +389,6 @@ class Repl(
                 null -> {}
                 is Quit -> {
                     logger.debug("run: normal quit")
-                    _atExit?.let {
-                        logger.trace("run: triggering atexit")
-                        it.invoke(NoncloseableOutputSendChannel(outputChannel))
-                    }
                     outputChannel.close()
                     inputChannel.cancel(canceller)
                 }

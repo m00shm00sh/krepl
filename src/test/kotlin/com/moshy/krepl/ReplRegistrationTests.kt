@@ -14,25 +14,6 @@ import kotlin.test.assertEquals
  */
 class ReplRegistrationTests {
     @Test
-    fun `test atexit`() = withTimeoutOneSecond {
-        val (repl, lines) = IoRepl(emptyList(), null)
-        repl.atExit { o ->
-            o.send("1".asLine())
-        }
-        repl.run()
-        assertEquals(lines("1"), lines)
-    }
-
-    @Test
-    fun `test atexit invalid argument`() = withTimeoutOneSecond {
-        val repl = NoopRepl()
-        repl.atExit { }
-        assertThrowsWithMessage<IllegalArgumentException>("at-exit handler already set") {
-            repl.atExit {  }
-        }
-    }
-
-    @Test
     fun `test prompt supplier evaluates every time`() = withTimeoutOneSecond {
         val v = AtomicInteger(0)
         val (repl, lines) = IoRepl(listOf("")) { "${v.incrementAndGet()}" }
