@@ -180,6 +180,27 @@ class Repl(
             ) { }
         for (c in listOf(cClearBuf.name, "clear-collection-buffer", "!<"))
             this[c] = cClearBuf
+        val cPop = CommandEntry("pop",
+                usage = "pop [n]",
+                help = "exit a nesting level entered by a previous handler"
+            ) { (toks, _, inCh, outCh) ->
+                val n = if (toks.size == 1) toks[0].toIntOrNull() else 1
+                require(n != null) {
+                    "invalid pop count"
+                }
+                doPopN(inCh, outCh, n)
+            }
+        for (c in listOf(cPop.name, "pop-level"))
+            this[c] = cPop
+        val cShowLevels = CommandEntry("levels",
+                usage = "level",
+                help = "show current nesting"
+            ) { (_, _, _, out) ->
+                val levels = commandStackNames
+                out.send(levels.asLine())
+            }
+        for (c in listOf(cShowLevels.name, "show-levels"))
+            this[c] = cShowLevels
         if (logger.isTraceEnabled) {
             for ((k, v) in this.entries)
                 logger.trace("builtin {} {}", quote(k), quote(v.name))
@@ -189,7 +210,41 @@ class Repl(
     val builtinCommands: Set<String>
         get() = builtins.keys
 
-    private val commands: MutableMap<String, CommandEntry> = mutableMapOf()
+    private data class CommandStackEntry(
+        val commands: MutableMap<String, CommandEntry> = mutableMapOf(),
+        val name: String = "",
+        val onPop: OnPopHandler = { _, _ -> },
+    )
+
+    private val _commands: MutableList<CommandStackEntry> = mutableListOf(CommandStackEntry())
+    private val commands: MutableMap<String, CommandEntry>
+        get() = _commands.last().commands
+    /** Enter a new nesting level.
+     *
+     * This should only be called inside a handler.
+     * @param name level name
+     * @param onPop handler to call when popping state; can receive input for something like confirmation
+     */
+    fun push(name: String, onPop: OnPopHandler = { _, _ -> }) {
+        val tail = commands
+        _commands.add(CommandStackEntry(tail.toMutableMap(), name, onPop))
+    }
+    private suspend fun doPopN(inCh: InputReceiveChannel, outCh: OutputSendChannel, n: Int = 1) {
+        require(n > 0) {
+            "invalid pop count"
+        }
+        require(commandDepth > n) {
+            "must call exit to exit initial state"
+        }
+        (0..<n).forEach { _ ->
+            val fn = _commands.removeLast().onPop
+            fn(inCh, outCh)
+        }
+    }
+    private val commandDepth: Int
+        get() = _commands.size
+    private val commandStackNames: String
+        get() = _commands.joinToString(separator = ":") { quote(it.name) }
 
     val registeredCommands: Set<String>
         get() = commands.keys
@@ -326,7 +381,12 @@ class Repl(
 
         suspend fun sendPrompt() {
             prompt?.let {
-                outputChannelThrowing.send((it.invoke() + " $ ").asNonLine())
+                val promptMsg = prompt.invoke()
+                val levels = commandStackNames.run {
+                    if (!isEmpty()) "$this "
+                    else this
+                }
+                outputChannelThrowing.send(("$levels$promptMsg $ ").asNonLine())
             }
         }
         fun needLines() =

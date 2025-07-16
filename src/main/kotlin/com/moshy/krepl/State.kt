@@ -13,3 +13,5 @@ data class State(
     val inputChannel: InputReceiveChannel,
     val outputChannel: OutputSendChannel,
 )
+
+typealias OnPopHandler = suspend (InputReceiveChannel, OutputSendChannel) -> Unit

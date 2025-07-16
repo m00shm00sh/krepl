@@ -125,6 +125,12 @@ Dumps contents of line buffer without consuming it.
 ### !<, clear, clear-collection-buffer
 Clears line buffer.
 
+### pop, pop-level
+Leaves level(s) entered by handler.
+
+### levels, show-levels
+Shows active levels.
+
 ## Instance parameters
 A new instance of the interpreter can be constructed with optional:
 1. input producer, which sends lines of input to a channel and

@@ -48,7 +48,9 @@ class ReplRegistrationTests {
             "collect-from-file", "<",
             "collect-more-from-file", "+<",
             "peek", "peek-collection-buffer", "?<",
-            "clear", "clear-collection-buffer", "!<"
+            "clear", "clear-collection-buffer", "!<",
+            "pop", "pop-level",
+            "levels", "show-levels"
         )
         val expRegistered = setOf("a", "b")
         assertEquals(expBuiltins, repl.builtinCommands)
