@@ -316,7 +316,9 @@ class Repl(
         val childScope = scope + SupervisorJob() + CoroutineName("Exec")
         val inputChannel: Channel<String> = Channel()
         val outputChannel: Channel<Output> = Channel()
-        val outputChannelThrowing = HeartbeatOutputSendChannel(outputChannel)
+        val outputChannelThrowing = HeartbeatOutputSendChannel(
+            outputChannel, logger("Repl:outputChannel")
+        )
 
         logger.debug("run: begin")
         val inputJob = scope.launch { inputChannel.inputProducer() }
