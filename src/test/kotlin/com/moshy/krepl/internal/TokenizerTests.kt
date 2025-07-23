@@ -50,6 +50,13 @@ class TokenizerTests {
     }
 
     @Test
+    fun testEscapedKeyKeyword() {
+        val line = "a b\\=c=d=e"
+        val toks = line.tokenizeLine()
+        assertEquals(mapOf("b=c" to "d=e"), toks.kw)
+    }
+
+    @Test
     fun testTrim() {
         val line = " a b "
         val toks = line.tokenizeLine()

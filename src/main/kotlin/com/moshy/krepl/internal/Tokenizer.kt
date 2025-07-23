@@ -15,7 +15,18 @@ internal fun String.tokenizeLine(): TokenizedCommand {
     val pos = mutableListOf<String>()
     val kw = mutableMapOf<String, String>()
     for (t in toks) {
-        val posEq = t.indexOf('=')
+        // handle escaped \= to allow equal sign in key
+        val posEq = run {
+            var pos = t.indexOf('=')
+            while (pos >= 1) {
+                if (t[pos-1] != ESC)
+                    break
+                pos = t.indexOf('=', pos + 1)
+                if (pos < 1)
+                    break
+            }
+            pos
+        }
         if (posEq < 0) {
             pos += t
             continue
@@ -25,7 +36,7 @@ internal fun String.tokenizeLine(): TokenizedCommand {
             pos += t.substring(1)
             continue
         }
-        val k = t.substring(0, posEq)
+        val k = t.substring(0, posEq).replace("\\=", "=")
         val v = t.substring(posEq+1)
         require(kw.putIfAbsent(k, v) == null) {
             "key $k specified twice"

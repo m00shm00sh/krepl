@@ -47,15 +47,15 @@ not the list of positional tokens passed during invocation.
 ## Tokens
 The line
 ```
-abc "d e" ="f=g h" i="j k" l\"
+abc "d e" ="f=g h" i="j k" l\" m\=n=o
 ```
 has
 - command `"abc"`
 - positionals `["d e", "f=g h", "l\""]`
-- keywords `{"i":"j k"}`.
+- keywords `{"i":"j k", "m=n":"o"}`.
 
 After tokenizing quoted tokens with backslash escape, the sequence of tokens is scanned
-for tokens containing `'='`. If it exists not at the start of the token, the token is
+for tokens containing unescaped `'='`. If it exists not at the start of the token, the token is
 extracted into a keyword. Otherwise, it is treated as a positional. The first token is always
 the command.
 
