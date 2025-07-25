@@ -115,6 +115,31 @@ class ReplOutputTests {
 
     }
 
+    @Test
+    fun `test multiline usage`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf("help", "help a"))
+        repl["a"] {
+            help = "h"
+            usage = "a\nb"
+            handler = {}
+        }
+        repl.run()
+        assertLinesMatch(
+            listOf(">> $ >>") +
+            lines(
+                "\ta",
+                "\tb",
+            ) +
+            listOf(" $ ") +
+            lines(
+                "a",
+                "b",
+                "h"
+            ) +
+            listOf(" $ ")
+        , lines)
+    }
+
     private companion object {
         @JvmStatic
         @BeforeAll

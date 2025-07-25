@@ -560,15 +560,17 @@ class Repl(
                 out.send("Commands:".asLine())
                 for ((name, cmd) in builtins) {
                     when {
-                        cmd.name != name || cmd.usage.isNullOrEmpty() -> generateUsage(name, true, cmd)
-                        else -> "\t(builtin) ${cmd.usage}"
-                    }.let { out.send(it.asLine()) }
+                        cmd.name != name || cmd.usage.isNullOrEmpty() ->
+                            sequenceOf(generateUsage(name, true, cmd))
+                        else -> cmd.usage.lineSequence().map { "\t(builtin) $it" }
+                    }.forEach { out.send(it.asLine()) }
                 }
                 for ((name, cmd) in commands) {
                     when {
-                        cmd.name != name || cmd.usage.isNullOrEmpty() -> generateUsage(name, false, cmd)
-                        else -> "\t${cmd.usage}"
-                    }.let { out.send(it.asLine()) }
+                        cmd.name != name || cmd.usage.isNullOrEmpty() ->
+                            sequenceOf(generateUsage(name, false, cmd))
+                        else -> cmd.usage.lineSequence().map { "\t$it" }
+                    }.forEach { out.send(it.asLine()) }
                 }
             }
             1 -> {
@@ -578,9 +580,10 @@ class Repl(
                     ?: throw IllegalArgumentException("no match for command ${quote(name)}")
                 cmd.help ?: throw IllegalArgumentException("no help message for command ${quote(name)}")
                 when {
-                    cmd.usage == null -> generateUsage(name, isBuiltin, cmd)
-                    else -> "\t${cmd.usage}"
-                }.let { out.send(it.substring(1).asLine()) }
+                    cmd.usage == null ->
+                        sequenceOf(generateUsage(name, isBuiltin, cmd).substring(1))
+                    else -> cmd.usage.lineSequence()
+                }.forEach { out.send(it.asLine()) }
                 for (line in cmd.help.lineSequence())
                     out.send(line.asLine())
             }
