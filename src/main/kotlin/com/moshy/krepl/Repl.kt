@@ -212,7 +212,7 @@ class Repl(
 
     private data class CommandStackEntry(
         val commands: MutableMap<String, CommandEntry> = mutableMapOf(),
-        val name: String = "",
+        var name: String = "",
         val onPop: OnPopHandler = { _, _ -> },
     )
 
@@ -229,6 +229,15 @@ class Repl(
         val tail = commands
         _commands.add(CommandStackEntry(tail.toMutableMap(), name, onPop))
     }
+    /** Provider a renamer to change the level string. */
+    fun renamer(): Renamer {
+        val depth = commandDepth
+        require(depth > 1) {
+            "refusing to provide renamer for default level"
+        }
+        return Renamer(depth - 1)
+
+    }
     private suspend fun doPopN(inCh: InputReceiveChannel, outCh: OutputSendChannel, n: Int = 1) {
         require(n > 0) {
             "invalid pop count"
@@ -241,6 +250,17 @@ class Repl(
             fn(inCh, outCh)
         }
     }
+    inner class Renamer internal constructor(private val index: Int) {
+        fun get() = _commands[index].name
+
+        fun set(value: String) {
+            require(index > 0) {
+                "refusing to rename default level"
+            }
+            _commands[index].name = value
+        }
+    }
+
     private val commandDepth: Int
         get() = _commands.size
     private val commandStackNames: String
@@ -381,12 +401,13 @@ class Repl(
 
         suspend fun sendPrompt() {
             prompt?.let {
-                val promptMsg = prompt.invoke()
                 val levels = commandStackNames.run {
                     if (!isEmpty()) "$this "
                     else this
                 }
-                outputChannelThrowing.send(("$levels$promptMsg $ ").asNonLine())
+                val promptMsg = prompt.invoke().run { if (isNotEmpty()) "$this " else this }
+                val preMsg = "$levels$promptMsg".run { ifEmpty { " " } }
+                outputChannelThrowing.send(("$preMsg$ ").asNonLine())
             }
         }
         fun needLines() =

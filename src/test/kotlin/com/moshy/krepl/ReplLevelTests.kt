@@ -114,6 +114,67 @@ class ReplLevelTests {
         ), lines)
     }
 
+    @Test
+    fun `test rename`() = withTimeoutOneSecond {
+        val (repl, lines)         = IoRepl(listOf(
+            "a", "b"
+        ))
+        repl["a"] {
+            handler = {
+                push("a")
+                val renamer = renamer()
+                this["b"] {
+                    handler = {
+                        renamer.set("b")
+                    }
+                }
+            }
+        }
+        repl.run()
+        assertLinesMatch(listOf(
+           " $ ",
+            ":a $ ",
+            ":b $ ",
+        ), lines)
+    }
+
+    @Test
+    fun `test rename nested`() = withTimeoutOneSecond {
+        val (repl, lines)         = IoRepl(listOf(
+            "a", "b", "c", "d"
+        ))
+        repl["a"] {
+            handler = {
+                push("a")
+                val renamer = renamer()
+                this["b"] {
+                    handler = {
+                        push("b")
+                        val renamer = renamer()
+                        this["d"] {
+                            handler = {
+                                renamer.set("d")
+                            }
+                        }
+                    }
+                }
+                this["c"] {
+                    handler = {
+                        renamer.set("c")
+                    }
+                }
+            }
+        }
+        repl.run()
+        assertLinesMatch(listOf(
+            " $ ",
+            ":a $ ",
+            ":a:b $ ",
+            ":c:b $ ",
+            ":c:d $ "
+        ), lines)
+    }
+
     private companion object {
         @JvmStatic
         @BeforeAll
