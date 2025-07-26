@@ -1,11 +1,12 @@
 plugins {
     kotlin("jvm") version "2.1.10"
     id("org.jetbrains.kotlinx.atomicfu") version "0.27.0"
+    id("org.jetbrains.kotlinx.kover") version "0.9.1"
     `maven-publish`
 }
 
 group = "com.moshy.krepl"
-version = "0.6.3"
+version = "0.6.4"
 
 repositories {
     mavenCentral()

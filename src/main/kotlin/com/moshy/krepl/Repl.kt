@@ -1,6 +1,5 @@
 package com.moshy.krepl
 
-import com.moshy.krepl.internal.NoncloseableOutputSendChannel
 import com.moshy.krepl.internal.HeartbeatOutputSendChannel
 import com.moshy.krepl.internal.fileReader
 import com.moshy.krepl.internal.lazyString
@@ -27,6 +26,8 @@ import java.io.OutputStream
 import java.io.Reader
 import java.util.concurrent.Semaphore
 import kotlin.collections.set
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * @param inputProducer suspending line producer
@@ -380,6 +381,74 @@ class Repl(
 
     enum class LineSemantics {
         NONE, CONSUME, PEEK
+    }
+
+    /** Invoke paginator.
+     *
+     * Navigation:
+     * - (n)ext - next page
+     * - (p)rev - prev page
+     * - (c)ount - set number of items per page
+     * - p(o)p - leave
+     * */
+    suspend fun paginate(lines: List<String>, out: OutputSendChannel, initialCount: Int = 10) {
+        push("paginate ??/??@??")
+        clear()
+        val renamer = renamer()
+        val size = lines.size
+        var count = min(size, initialCount)
+        var start = 0
+        suspend fun printPage() =
+            lines.subList(start, min(size, start + count)).forEach { out.send(it.asLine()) }
+        printPage()
+        start += count
+        renamer.set("paginate $start/$size@$count")
+        this["next"] {
+            handler = { (_, _, _, o) ->
+                check (o !== out) {
+                    "unexpected: output channel"
+                }
+                if (start >= lines.size)
+                    throw IllegalArgumentException("already at end")
+                printPage()
+                start += count
+                renamer.set("paginate ${if (start >= count) "<END>" else start}/$size@$count")
+            }
+        }
+        this["n"] = this["next"]
+        this["prev"] {
+            handler = { (_, _, _, o) ->
+                check (o !== out) {
+                    "unexpected: output channel"
+                }
+                if (start < 0)
+                    throw IllegalArgumentException("already at start")
+                start = max(start - count, 0)
+                printPage()
+                start += count
+                renamer.set("paginate $start/$size@$count")
+            }
+        }
+        this["p"] = this["prev"]
+        this["count"] {
+            help = "set count per page"
+            usage = "count #"
+            handler = { (pos, _, _, _) ->
+                val c = pos.firstOrNull() ?: throw IllegalArgumentException("expected count")
+                count = c.toInt()
+                renamer.set("paginate $start/$size@$count")
+            }
+        }
+        this["c"] = this["count"]
+        this["o"] {
+            help = "quit pagination view"
+            handler = { (_, _, i, o) ->
+                check (o !== out) {
+                    "unexpected: output channel"
+                }
+                doPopN(i, out, 1) }
+        }
+
     }
 
     /** Start the REPL.
