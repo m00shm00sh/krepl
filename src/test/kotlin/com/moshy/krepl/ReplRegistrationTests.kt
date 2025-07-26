@@ -25,6 +25,15 @@ class ReplRegistrationTests {
     }
 
     @Test
+    fun `test command name is visible inside builder`() = withTimeoutOneSecond {
+        val repl = Repl()
+        repl["a"] {
+            handler = {}
+            assertEquals("a", name)
+        }
+    }
+
+    @Test
     fun `test command registration`() = withTimeoutOneSecond {
         val (repl, lines) = IoRepl(listOf("a"), null)
         repl["a"] {

@@ -329,7 +329,7 @@ class Repl(
     }
     internal inner class Entry(val name: String, val old: CommandEntry? = null) : EntryInvoker {
         override operator fun invoke(block: EntryBuilder.() -> Unit): Entry {
-            val builder = EntryBuilder().apply(block)
+            val builder = EntryBuilder(name).apply(block)
             if (!allowOverwriteCommand) {
                 val existing = commands[name]
                 require(existing == null) {
@@ -339,7 +339,7 @@ class Repl(
             requireNotNull(builder.handler) {
                 "unset handler"
             }
-            val entry = builder.build(name)
+            val entry = builder.build()
             commands[name] = entry
             return Entry(name, entry)
         }
@@ -364,12 +364,13 @@ class Repl(
      * @see [State]
      */
     class EntryBuilder internal constructor(
+        val name: String,
         var handler: (suspend Repl.(State) -> Unit)? = null,
         var help: String? = null,
         var usage: String? = null,
         var semantics: LineSemantics = LineSemantics.NONE,
     ) {
-        internal fun build(name: String) =
+        internal fun build() =
             CommandEntry(
                 handler = handler!!,
                 name = name,
@@ -737,10 +738,6 @@ class Repl(
         }
     }
 
-    /** @see invoke */
-    companion object {
-
-    }
 }
 
 /* Exception to invalid input thrown by Repl. We subclass IAE so we can catch it and therefore not
