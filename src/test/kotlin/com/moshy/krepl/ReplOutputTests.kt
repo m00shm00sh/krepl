@@ -128,12 +128,12 @@ class ReplOutputTests {
             listOf(">> $ >>") +
             lines(
                 "\ta",
-                "\tb",
+                "\t\tb",
             ) +
             listOf(" $ ") +
             lines(
                 "a",
-                "b",
+                "\tb",
                 "h"
             ) +
             listOf(" $ ")

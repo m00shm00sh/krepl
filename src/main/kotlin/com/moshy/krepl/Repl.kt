@@ -645,6 +645,13 @@ class Repl(
                 else -> "\t$isB$qn <requires 0+ collected lines>"
             }
         }
+        fun String.produceLines(preamble: String = "") =
+            lineSequence()
+                .mapIndexed { i, v ->
+                    (if (i > 0) "\t" else "") +
+                        "$preamble$v"
+                }
+
 
         when (pos.size) {
             0 -> {
@@ -653,14 +660,14 @@ class Repl(
                     when {
                         cmd.name != name || cmd.usage.isNullOrEmpty() ->
                             sequenceOf(generateUsage(name, true, cmd))
-                        else -> cmd.usage.lineSequence().map { "\t(builtin) $it" }
+                        else -> cmd.usage.produceLines("\t(builtin) ")
                     }.forEach { out.send(it.asLine()) }
                 }
                 for ((name, cmd) in commands) {
                     when {
                         cmd.name != name || cmd.usage.isNullOrEmpty() ->
                             sequenceOf(generateUsage(name, false, cmd))
-                        else -> cmd.usage.lineSequence().map { "\t$it" }
+                        else -> cmd.usage.produceLines("\t")
                     }.forEach { out.send(it.asLine()) }
                 }
             }
@@ -673,7 +680,7 @@ class Repl(
                 when {
                     cmd.usage == null ->
                         sequenceOf(generateUsage(name, isBuiltin, cmd).substring(1))
-                    else -> cmd.usage.lineSequence()
+                    else -> cmd.usage.produceLines()
                 }.forEach { out.send(it.asLine()) }
                 for (line in cmd.help.lineSequence())
                     out.send(line.asLine())
