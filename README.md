@@ -125,6 +125,9 @@ Dumps contents of line buffer without consuming it.
 ### !<, clear, clear-collection-buffer
 Clears line buffer.
 
+### .<, exec-buffer
+Execute the contents of the line buffer. Recursive invocations are not supported.
+
 ### pop, pop-level
 Leaves level(s) entered by handler.
 

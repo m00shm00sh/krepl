@@ -149,6 +149,26 @@ class ReplBulkLineOpTests {
         ), lines)
     }
 
+    @Test
+    fun `test consume exec`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf(
+            "<< @@",
+            "a",
+            "@@",
+            ".<"
+        ), null)
+        repl["a"] {
+            handler = { (_, _, _, out) ->
+                out.send("b".asLine())
+            }
+        }
+        repl.run()
+        assertLinesMatch(lines(
+            "1 collected",
+            "b"
+        ), lines)
+    }
+
     private companion object {
         @JvmStatic
         @BeforeAll

@@ -7,6 +7,7 @@ import com.moshy.krepl.internal.lineConsumer
 import com.moshy.krepl.internal.lineProducer
 import com.moshy.krepl.internal.logger
 import com.moshy.krepl.internal.makeState
+import com.moshy.krepl.internal.splicingLineProducer
 import com.moshy.krepl.internal.tokenizeLine
 import kotlin.reflect.KClass
 import kotlin.reflect.full.isSubclassOf
@@ -14,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.channels.Channel
@@ -112,6 +114,8 @@ class Repl(
             }
         }
 
+    private var doExec: (suspend Repl.(State) -> Unit) = { error("uninitialized doExec") }
+
     private val builtins: Map<String, CommandEntry> = buildMap {
         val cExit = CommandEntry("exit",
                 usage = "exit",
@@ -202,6 +206,14 @@ class Repl(
             }
         for (c in listOf(cShowLevels.name, "show-levels"))
             this[c] = cShowLevels
+        val cExec = CommandEntry("exec-buffer",
+            help = "execute line buffer",
+            semantics = LineSemantics.CONSUME
+        ) {
+            doExec(it)
+        }
+        for (c in listOf(cExec.name, ".<"))
+            this[c] = cExec
         if (logger.isTraceEnabled) {
             for ((k, v) in this.entries)
                 logger.trace("builtin {} {}", quote(k), quote(v.name))
@@ -449,7 +461,6 @@ class Repl(
                 }
                 doPopN(i, out, 1) }
         }
-
     }
 
     /** Start the REPL.
@@ -459,15 +470,19 @@ class Repl(
         checkForProblematicState()
         val scope = scope()
         val childScope = scope + SupervisorJob() + CoroutineName("Exec")
-        val inputChannel: Channel<String> = Channel()
+        val ioInputChannel: Channel<String> = Channel()
         val outputChannel: Channel<Output> = Channel()
         val outputChannelThrowing = HeartbeatOutputSendChannel(
             outputChannel, logger("Repl:outputChannel")
         )
+        val inputChannel: Channel<String> = Channel()
+        val inputSpliceChannel: Channel<List<String>> = Channel(1)
+        val spliceProducer = splicingLineProducer(inputSpliceChannel, ioInputChannel)
 
         logger.debug("run: begin")
-        val inputJob = scope.launch { inputChannel.inputProducer() }
-        val outputJob = scope.launch { outputChannel.outputConsumer() }
+        scope.launch { ioInputChannel.inputProducer() }
+        scope.launch { outputChannel.outputConsumer() }
+        scope.launch { inputChannel.spliceProducer() }
 
         suspend fun sendPrompt() {
             prompt?.let {
@@ -488,6 +503,15 @@ class Repl(
                 return@let it
             }
         fun peekLines() = needLines()
+
+
+        // implement actual builtin exec here since we need access to splice channel
+        doExec = { (lines, _, _, _) ->
+            require (lines.isNotEmpty()) {
+                "empty exec buffer"
+            }
+            inputSpliceChannel.send(lines)
+        }
 
         logger.trace("run: input worker: running")
         logger.trace("run: output worker: running")
@@ -537,24 +561,24 @@ class Repl(
                     logger.trace("aborting writing exception details to closed output channel")
                 }
             }
-            @Suppress("USELESS_IS_CHECK") // false diagnostic
             when (canceller) {
                 null -> {}
                 is Quit -> {
                     logger.debug("run: normal quit")
+                    inputSpliceChannel.close()
+                    ioInputChannel.cancel(canceller) // transitively inputChannel
                     outputChannel.close()
-                    inputChannel.cancel(canceller)
                 }
                 else -> {
                     logger.debug("run: fatal-exception cleanup")
                     val asCancellation = Quit("$canceller").apply { addSuppressed(canceller) }
-                    inputChannel.cancel(asCancellation)
+                    inputSpliceChannel.close()
+                    ioInputChannel.cancel(asCancellation) // transivitely inputChannel
                     outputChannel.close(asCancellation)
                 }
             }
         }
-        inputJob.join()
-        outputJob.join()
+        currentCoroutineContext().cancelChildren()
         if (canceller !is Quit)
             throw canceller
     }
