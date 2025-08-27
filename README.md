@@ -88,8 +88,12 @@ if a child or channel throws it or any of its subclasses.
 It is an error to have filtered exceptions if the state is not *stack-dump-enabled*.
 
 ## Builtins
-### exit, quit
+### quit, exit
+Leaves level entered by handler or quits interpreter.
+
+### quit-all, exit-all
 Quits the interpreter without a message.
+
 ### help, ?
 Prints the list of available commands, or help for specified command.
 
@@ -129,7 +133,6 @@ Clears line buffer.
 Execute the contents of the line buffer. Recursive invocations are not supported.
 
 ### pop, pop-level
-Leaves level(s) entered by handler.
 
 ### levels, show-levels
 Shows active levels.

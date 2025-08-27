@@ -46,8 +46,8 @@ class ReplOutputTests {
         val B = "(builtin) "
         assertLinesMatch(lines(
             "Commands:",
-            "\t${B}exit",
-            "\t${B}quit alias for: exit",
+            "\t${B}exit-all",
+            "\t${B}quit-all alias for: exit-all",
             "\t${B}help [command]",
             "\t${B}? alias for: help",
             "\t${B}<< delimiter",

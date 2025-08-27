@@ -15,7 +15,7 @@ class ReplLevelTests {
         val (repl, lines) = IoRepl(listOf(
             "a",
             "b",
-            "pop",
+            "quit",
             "b"
         ), null)
         repl["a"] {
@@ -67,7 +67,8 @@ class ReplLevelTests {
             "a",
             "b",
             "c",
-            "pop 2",
+            "quit",
+            "quit",
             "levels"
         ), null)
         repl["a"] {
@@ -87,29 +88,6 @@ class ReplLevelTests {
         }
         repl.run()
         assertLinesMatch(lines(
-            ":aa",
-        ), lines)
-    }
-
-    @Test
-    fun `test invalid pop`() = withTimeoutOneSecond {
-        val (repl, lines) = IoRepl(listOf(
-            "a",
-            "pop 2",
-            "pop -1",
-            "pop one",
-            "levels"
-        ), null)
-        repl["a"] {
-            handler = {
-                push("aa")
-            }
-        }
-        repl.run()
-        assertLinesMatch(lines(
-            "\\(pop:E\\).* must call exit.*",
-            "\\(pop:E\\).* invalid pop count",
-            "\\(pop:E\\).* invalid pop count",
             ":aa",
         ), lines)
     }

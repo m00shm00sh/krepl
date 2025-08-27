@@ -19,7 +19,7 @@ class ReplPaginatorTests {
             "p",
             "c 4",
             "n",
-            "o"
+            "q"
         ))
         repl["a"] {
             handler = { (_, _, _, o) ->

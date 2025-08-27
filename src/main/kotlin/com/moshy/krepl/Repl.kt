@@ -117,12 +117,12 @@ class Repl(
     private var doExec: (suspend Repl.(State) -> Unit) = { error("uninitialized doExec") }
 
     private val builtins: Map<String, CommandEntry> = buildMap {
-        val cExit = CommandEntry("exit",
-                usage = "exit",
-                help = "Exits the interpreter"
+        val cExitAll = CommandEntry("exit-all",
+                usage = "exit-all",
+                help = "Exits the interpreter (all levels)"
             ) { throw Quit() }
-        for (c in listOf(cExit.name, "quit"))
-            this[c] = cExit
+        for (c in listOf(cExitAll.name, "quit-all"))
+            this[c] = cExitAll
         val cHelp = CommandEntry("help",
                 usage = "help [command]",
                 help = "Print the list of available commands, or help for specified command"
@@ -185,17 +185,13 @@ class Repl(
             ) { }
         for (c in listOf(cClearBuf.name, "clear-collection-buffer", "!<"))
             this[c] = cClearBuf
-        val cPop = CommandEntry("pop",
-                usage = "pop [n]",
-                help = "exit a nesting level entered by a previous handler"
+        val cPop = CommandEntry("quit",
+                usage = "quit",
+                help = "exit a nesting level or quit"
             ) { (toks, _, inCh, outCh) ->
-                val n = if (toks.size == 1) toks[0].toIntOrNull() else 1
-                require(n != null) {
-                    "invalid pop count"
-                }
-                doPopN(inCh, outCh, n)
+                quitLevel(inCh, outCh)
             }
-        for (c in listOf(cPop.name, "pop-level"))
+        for (c in listOf(cPop.name, "exit"))
             this[c] = cPop
         val cShowLevels = CommandEntry("levels",
                 usage = "level",
@@ -251,17 +247,12 @@ class Repl(
         return Renamer(depth - 1)
 
     }
-    private suspend fun doPopN(inCh: InputReceiveChannel, outCh: OutputSendChannel, n: Int = 1) {
-        require(n > 0) {
-            "invalid pop count"
-        }
-        require(commandDepth > n) {
-            "must call exit to exit initial state"
-        }
-        (0..<n).forEach { _ ->
-            val fn = _commands.removeLast().onPop
-            fn(inCh, outCh)
-        }
+    /** Leave nesting level or quit. */
+    suspend fun quitLevel(inCh: InputReceiveChannel, outCh: OutputSendChannel) {
+        if (commandDepth <= 1)
+            throw Quit()
+        val fn = _commands.removeLast().onPop
+        fn(inCh, outCh)
     }
     inner class Renamer internal constructor(private val index: Int) {
         fun get() = _commands[index].name
@@ -338,6 +329,7 @@ class Repl(
 
     interface EntryInvoker {
         operator fun invoke(block: EntryBuilder.() -> Unit): EntryInvoker
+
     }
     internal inner class Entry(val name: String, val old: CommandEntry? = null) : EntryInvoker {
         override operator fun invoke(block: EntryBuilder.() -> Unit): Entry {
@@ -402,7 +394,7 @@ class Repl(
      * - (n)ext - next page
      * - (p)rev - prev page
      * - (c)ount - set number of items per page
-     * - p(o)p - leave
+     * - (q)uit - leave
      * */
     suspend fun paginate(lines: List<String>, out: OutputSendChannel, initialCount: Int = 10) {
         push("paginate ??/??@??")
@@ -453,13 +445,9 @@ class Repl(
             }
         }
         this["c"] = this["count"]
-        this["o"] {
+        this["q"] {
             help = "quit pagination view"
-            handler = { (_, _, i, o) ->
-                check (o !== out) {
-                    "unexpected: output channel"
-                }
-                doPopN(i, out, 1) }
+            handler = { (_, _, i, o) -> quitLevel(i, o) }
         }
     }
 

@@ -50,7 +50,7 @@ class ReplRegistrationTests {
             repl["B"] = repl["A"]
         }
         val expBuiltins = setOf(
-            "exit", "quit",
+            "exit-all", "quit-all",
             "help", "?",
             "collect", "collect-lines", "<<",
             "collect-more", "collect-more-lines", "+<<",
@@ -58,7 +58,7 @@ class ReplRegistrationTests {
             "collect-more-from-file", "+<",
             "peek", "peek-collection-buffer", "?<",
             "clear", "clear-collection-buffer", "!<",
-            "pop", "pop-level",
+            "quit", "exit",
             "levels", "show-levels",
             "exec-buffer", ".<"
         )
