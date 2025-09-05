@@ -251,8 +251,9 @@ class Repl(
     suspend fun quitLevel(inCh: InputReceiveChannel, outCh: OutputSendChannel) {
         if (commandDepth <= 1)
             throw Quit()
-        val fn = _commands.removeLast().onPop
+        val fn = _commands.last().onPop
         fn(inCh, outCh)
+        _commands.removeLast()
     }
     inner class Renamer internal constructor(private val index: Int) {
         fun get() = _commands[index].name

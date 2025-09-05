@@ -93,6 +93,30 @@ class ReplLevelTests {
     }
 
     @Test
+    fun `test pop exception`() = withTimeoutOneSecond {
+        val (repl, lines) = IoRepl(listOf(
+            "a",
+            "levels",
+            "quit",
+            "levels"
+        ), null)
+        repl["a"] {
+            handler = {
+                push("aa") { _, _ ->
+                    throw IllegalArgumentException("a")
+                }
+            }
+        }
+        repl.run()
+        assertLinesMatch(
+            lines(":aa") +
+                    listOf("\\(quit:E\\) .*IllegalArgumentException: .*\n") +
+                    lines(":aa"),
+            lines
+        )
+    }
+
+    @Test
     fun `test rename`() = withTimeoutOneSecond {
         val (repl, lines)         = IoRepl(listOf(
             "a", "b"
